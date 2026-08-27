@@ -9,6 +9,7 @@ import {
 import { eventService } from '../../services/eventService';
 import EventCard from '../../components/events/EventCard';
 import { GridSkeleton } from '../../components/ui/LoadingSkeleton';
+import heroImage from "../../assets/images/hero.png";
 
 const CATEGORY_ICONS = {
   Technical: Cpu, Cultural: Music, Sports: Trophy, Workshops: Wrench,
@@ -95,6 +96,15 @@ export default function Landing() {
           </div>
 
           <div className="relative hidden lg:block h-96">
+            <div className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl ring-1 ring-white/20">
+              <img
+  src={heroImage}
+  alt="College event management team"
+  className="h-full w-full object-cover"
+/>
+              <div className="absolute inset-0 bg-gradient-to-t from-brand-900/60 via-brand-700/10 to-transparent" />
+            </div>
+
             <motion.div animate={{ y: [0, -14, 0] }} transition={{ repeat: Infinity, duration: 5 }}
               className="absolute top-4 left-4 w-64 card !bg-white/95 p-4">
               <p className="text-xs font-semibold text-brand-600 mb-1">Upcoming Event</p>

@@ -1,7 +1,7 @@
 import api from './api';
 
 export const registrationService = {
-  register: (eventId) => api.post(`/registrations/${eventId}`).then((r) => r.data),
+  register: (eventId, data) => api.post(`/registrations/${eventId}`, data).then((r) => r.data),
   cancel: (id) => api.delete(`/registrations/${id}`).then((r) => r.data),
   mine: (status) => api.get('/registrations/me', { params: { status } }).then((r) => r.data),
 };

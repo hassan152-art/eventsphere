@@ -25,7 +25,7 @@ router.patch('/events/:id/cancel', cancelEvent);
 router.patch('/feedback/:id/moderate', moderateFeedback);
 router.patch('/media/:id/moderate', moderateMedia);
 
-router.post('/announcements', createAnnouncement);
-router.delete('/announcements/:id', deactivateAnnouncement);
+router.post( '/announcements',protect,authorize('admin'),createAnnouncement);
 
+router.delete('/announcements/:id',protect,authorize('admin'),deactivateAnnouncement);
 module.exports = router;

@@ -6,12 +6,11 @@ import {
   Facebook, Linkedin, Mail, MessageCircle, Twitter, Star,
 } from 'lucide-react';
 import { eventService } from '../../services/eventService';
-import { registrationService } from '../../services/registrationService';
 import StatusBadge from '../../components/events/StatusBadge';
 import SeatAvailability from '../../components/events/SeatAvailability';
 import { useAuth } from '../../context/AuthContext';
 import { userService } from '../../services/userService';
-import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import RegistrationForm from '../../components/events/RegistrationForm';
 
 const FALLBACK_IMG = 'https://images.unsplash.com/photo-1523580494863-6f3031224c94?q=80&w=1200&auto=format&fit=crop';
 
@@ -22,8 +21,7 @@ export default function EventDetails() {
   const [event, setEvent] = useState(null);
   const [feedback, setFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [registering, setRegistering] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [showRegistrationForm, setShowRegistrationForm] = useState(false);
 
   const load = () => {
     eventService.getBySlug(slug).then(({ data }) => {
@@ -34,18 +32,9 @@ export default function EventDetails() {
 
   useEffect(() => { load(); }, [slug]);
 
-  const handleRegister = async () => {
+  const handleRegisterClick = () => {
     if (!isAuthenticated) return navigate('/login', { state: { from: { pathname: `/events/${slug}` } } });
-    setRegistering(true);
-    try {
-      const { message } = await registrationService.register(event._id);
-      toast.success(message);
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Registration failed');
-    } finally {
-      setRegistering(false);
-    }
+    setShowRegistrationForm(true);
   };
 
   const handleBookmark = async () => {
@@ -143,8 +132,8 @@ export default function EventDetails() {
             <p className="text-xs text-slate-400 mt-1">Registration closes {new Date(event.registrationDeadline).toDateString()}</p>
 
             <button
-              onClick={() => setConfirmOpen(true)}
-              disabled={registering || event.computedStatus === 'Completed' || event.computedStatus === 'Cancelled' || (event.seatsRemaining <= 0 && !event.waitlistEnabled)}
+              onClick={handleRegisterClick}
+              disabled={event.computedStatus === 'Completed' || event.computedStatus === 'Cancelled' || (event.seatsRemaining <= 0 && !event.waitlistEnabled)}
               className="btn-primary w-full mt-4"
             >
               {event.seatsRemaining > 0 ? 'Register Now' : event.waitlistEnabled ? 'Join Waitlist' : 'Registration Full'}
@@ -173,14 +162,13 @@ export default function EventDetails() {
         </aside>
       </div>
 
-      <ConfirmDialog
-        open={confirmOpen}
-        title={event.seatsRemaining > 0 ? 'Confirm registration' : 'Join the waitlist?'}
-        description={event.seatsRemaining > 0 ? `You're about to register for "${event.title}".` : `This event is full. You'll be added to the waitlist and notified if a spot opens up.`}
-        confirmLabel={event.seatsRemaining > 0 ? 'Register' : 'Join Waitlist'}
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={() => { setConfirmOpen(false); handleRegister(); }}
-      />
+      {showRegistrationForm && (
+        <RegistrationForm
+          event={event}
+          onClose={() => setShowRegistrationForm(false)}
+          onSuccess={load}
+        />
+      )}
     </div>
   );
 }

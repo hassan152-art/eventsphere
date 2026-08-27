@@ -17,6 +17,19 @@ const registrationSchema = new mongoose.Schema(
     // Secure, unique token embedded in the participant's QR pass.
     attendanceToken: { type: String, required: true, unique: true, default: () => crypto.randomBytes(24).toString('hex') },
 
+    // Optional extra details collected by a custom registration form (e.g.
+    // roll number, phone, semester) for events that want more than the
+    // student's account profile already provides. Not required - plain
+    // account-based registrations leave this unset.
+    walkInDetails: {
+      fullName: String,
+      email: String,
+      rollNumber: String,
+      phone: String,
+      department: String,
+      semester: String,
+    },
+
     registeredAt: { type: Date, default: Date.now },
     cancelledAt: { type: Date },
   },

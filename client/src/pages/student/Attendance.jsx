@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { QrCode, CheckCircle2 } from 'lucide-react';
-import { registrationService } from '../../services/registrationService';
-import { attendanceService } from '../../services/registrationService';
+import toast from 'react-hot-toast';
+import { QrCode, CheckCircle2, Loader2 } from 'lucide-react';
+import { registrationService, attendanceService } from '../../services/registrationService';
 import EmptyState from '../../components/ui/EmptyState';
 
 export default function Attendance() {
@@ -9,21 +9,38 @@ export default function Attendance() {
   const [attended, setAttended] = useState([]);
   const [activeQR, setActiveQR] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [qrLoadingId, setQrLoadingId] = useState(null);
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true);
     Promise.all([registrationService.mine('Confirmed'), attendanceService.mine()])
-      .then(([regs, att]) => { setRegistrations(regs.data.registrations); setAttended(att.data.attendance); })
+      .then(([regs, att]) => {
+        setRegistrations(regs.data.registrations);
+        setAttended(att.data.attendance);
+      })
+      .catch((err) => {
+        toast.error(err.response?.data?.message || 'Could not load your attendance data');
+      })
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(load, []);
 
   const attendedEventIds = new Set(attended.map((a) => a.event?._id));
 
   const showQR = async (registrationId) => {
-    const { data } = await attendanceService.myQR(registrationId);
-    setActiveQR(data);
+    setQrLoadingId(registrationId);
+    try {
+      const { data } = await attendanceService.myQR(registrationId);
+      setActiveQR(data);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not load your QR pass');
+    } finally {
+      setQrLoadingId(null);
+    }
   };
 
-  const upcomingRegs = registrations.filter((r) => !attendedEventIds.has(r.event?._id));
+  const upcomingRegs = registrations.filter((r) => r.event && !attendedEventIds.has(r.event._id));
 
   return (
     <div className="space-y-6">
@@ -38,9 +55,19 @@ export default function Attendance() {
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             {upcomingRegs.map((r) => (
-              <button key={r._id} onClick={() => showQR(r._id)} className="card p-4 text-left hover:bg-slate-50 dark:hover:bg-white/5 flex items-center gap-3">
-                <span className="h-10 w-10 rounded-xl bg-brand-50 dark:bg-brand-900/30 text-brand-600 grid place-items-center"><QrCode size={18} /></span>
-                <div><p className="font-medium text-sm">{r.event?.title}</p><p className="text-xs text-slate-500">{new Date(r.event?.date).toDateString()}</p></div>
+              <button
+                key={r._id}
+                onClick={() => showQR(r._id)}
+                disabled={qrLoadingId === r._id}
+                className="card p-4 text-left hover:bg-slate-50 dark:hover:bg-white/5 flex items-center gap-3 disabled:opacity-60"
+              >
+                <span className="h-10 w-10 rounded-xl bg-brand-50 dark:bg-brand-900/30 text-brand-600 grid place-items-center">
+                  {qrLoadingId === r._id ? <Loader2 size={18} className="animate-spin" /> : <QrCode size={18} />}
+                </span>
+                <div>
+                  <p className="font-medium text-sm">{r.event?.title}</p>
+                  <p className="text-xs text-slate-500">{r.event?.date && new Date(r.event.date).toDateString()}</p>
+                </div>
               </button>
             ))}
           </div>
@@ -49,7 +76,7 @@ export default function Attendance() {
 
       {activeQR && (
         <div className="card p-6 text-center max-w-sm">
-          <p className="font-semibold mb-3">{activeQR.event.title}</p>
+          <p className="font-semibold mb-3">{activeQR.event?.title}</p>
           <img src={activeQR.qrDataUrl} alt="QR attendance pass" className="mx-auto rounded-xl w-56 h-56" />
           <p className="text-xs text-slate-400 mt-3">Show this to the organizer at the venue to check in.</p>
         </div>

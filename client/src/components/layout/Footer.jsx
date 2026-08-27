@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Sparkles, Facebook, Twitter, Instagram, Linkedin, Mail, MapPin, Phone } from 'lucide-react';
+import { Facebook, Twitter, Instagram, Linkedin, Mail, MapPin, Phone } from 'lucide-react';
+import { LogoMark } from '../ui/Logo';
 
 const CATEGORIES = ['Technical', 'Cultural', 'Sports', 'Workshops', 'Seminars', 'Competitions'];
 
@@ -9,9 +10,7 @@ export default function Footer() {
       <div className="container-page py-14 grid grid-cols-1 md:grid-cols-4 gap-10">
         <div>
           <Link to="/" className="flex items-center gap-2 font-extrabold text-xl text-white">
-            <span className="h-9 w-9 rounded-xl bg-hero-gradient grid place-items-center">
-              <Sparkles size={18} />
-            </span>
+            <LogoMark size={32} />
             EventSphere
           </Link>
           <p className="mt-4 text-sm text-slate-400 leading-relaxed">

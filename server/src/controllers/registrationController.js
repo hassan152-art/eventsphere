@@ -1,4 +1,3 @@
-const mongoose = require('mongoose');
 const asyncHandler = require('../middleware/asyncHandler');
 const { ApiError, success } = require('../utils/apiResponse');
 const Event = require('../models/Event');
@@ -13,6 +12,12 @@ const registerForEvent = asyncHandler(async (req, res) => {
   const { eventId } = req.params;
   const studentId = req.user._id;
 
+  // Optional extra details from a custom registration form on the frontend
+  // (roll number, phone, semester, etc.) - all optional, purely additive.
+  const { fullName, email, rollNumber, phone, department, semester } = req.body || {};
+  const walkInDetails = { fullName, email, rollNumber, phone, department, semester };
+  const hasWalkInDetails = Object.values(walkInDetails).some((v) => v !== undefined && v !== null && v !== '');
+
   const existing = await Registration.findOne({ event: eventId, student: studentId, status: { $ne: 'Cancelled' } });
   if (existing) throw new ApiError(409, 'You are already registered for this event');
 
@@ -26,43 +31,63 @@ const registerForEvent = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Registration deadline has passed');
   }
 
-  const session = await mongoose.startSession();
+  // NOTE: We intentionally avoid mongoose sessions/transactions here.
+  // Multi-document transactions require MongoDB to be running as a replica
+  // set (or mongos), which a plain local `mongod` is not by default - on a
+  // standalone instance `session.withTransaction()` throws "Transaction
+  // numbers are only allowed on a replica set member or mongos" and the
+  // whole registration silently fails, so students never get a Confirmed
+  // registration (and therefore never see an attendance QR).
+  //
+  // Overbooking is still prevented because the seat decrement below is a
+  // single atomic `findOneAndUpdate` (Mongo guarantees atomicity per
+  // document regardless of transactions). If the follow-up Registration
+  // write fails for some reason, we compensate by reverting the seat count.
   let registration;
 
-  try {
-    await session.withTransaction(async () => {
-      // Atomic seat decrement - only succeeds if a seat is still available,
-      // which is what actually prevents overbooking under concurrent requests.
-      const updatedEvent = await Event.findOneAndUpdate(
-        { _id: eventId, seatsRemaining: { $gt: 0 } },
-        { $inc: { seatsRemaining: -1, registrationCount: 1 } },
-        { new: true, session }
-      );
+  // Atomic seat decrement - only succeeds if a seat is still available,
+  // which is what actually prevents overbooking under concurrent requests.
+  const updatedEvent = await Event.findOneAndUpdate(
+    { _id: eventId, seatsRemaining: { $gt: 0 } },
+    { $inc: { seatsRemaining: -1, registrationCount: 1 } },
+    { new: true }
+  );
 
-      if (updatedEvent) {
-        const [reg] = await Registration.create(
-          [{ event: eventId, student: studentId, status: 'Confirmed' }],
-          { session }
-        );
-        registration = reg;
-        return;
-      }
+  if (updatedEvent) {
+    try {
+      registration = await Registration.create({
+        event: eventId,
+        student: studentId,
+        status: 'Confirmed',
+        ...(hasWalkInDetails && { walkInDetails }),
+      });
+    } catch (err) {
+      // Roll back the seat reservation if the registration record couldn't
+      // be created (e.g. duplicate-key race), so seats aren't lost.
+      await Event.updateOne({ _id: eventId }, { $inc: { seatsRemaining: 1, registrationCount: -1 } });
+      if (err.code === 11000) throw new ApiError(409, 'You are already registered for this event');
+      throw err;
+    }
+  } else {
+    // No seat available -> waitlist if enabled
+    if (!event.waitlistEnabled) {
+      throw new ApiError(400, 'Registration Full');
+    }
 
-      // No seat available -> waitlist if enabled
-      if (!event.waitlistEnabled) {
-        throw new ApiError(400, 'Registration Full');
-      }
-
-      const waitlistCount = await Registration.countDocuments({ event: eventId, status: 'Waitlisted' }).session(session);
-      const [reg] = await Registration.create(
-        [{ event: eventId, student: studentId, status: 'Waitlisted', waitlistPosition: waitlistCount + 1 }],
-        { session }
-      );
-      await Event.updateOne({ _id: eventId }, { $inc: { registrationCount: 1 } }, { session });
-      registration = reg;
-    });
-  } finally {
-    session.endSession();
+    const waitlistCount = await Registration.countDocuments({ event: eventId, status: 'Waitlisted' });
+    try {
+      registration = await Registration.create({
+        event: eventId,
+        student: studentId,
+        status: 'Waitlisted',
+        waitlistPosition: waitlistCount + 1,
+        ...(hasWalkInDetails && { walkInDetails }),
+      });
+      await Event.updateOne({ _id: eventId }, { $inc: { registrationCount: 1 } });
+    } catch (err) {
+      if (err.code === 11000) throw new ApiError(409, 'You are already registered for this event');
+      throw err;
+    }
   }
 
   const isWaitlisted = registration.status === 'Waitlisted';

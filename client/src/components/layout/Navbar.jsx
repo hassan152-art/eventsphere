@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Moon, Sun, Sparkles, ChevronDown, LogOut, LayoutDashboard } from 'lucide-react';
+import { Menu, X, Moon, Sun, ChevronDown, LogOut, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import NotificationBell from '../notifications/NotificationBell';
+import { LogoMark } from '../ui/Logo';
 
 const NAV_LINKS = [
   { to: '/', label: 'Home' },
@@ -42,11 +43,14 @@ export default function Navbar() {
     >
       <nav className="container-page flex items-center justify-between h-16">
         <Link to="/" className="flex items-center gap-2 font-extrabold text-xl">
-          <span className="h-9 w-9 rounded-xl bg-hero-gradient grid place-items-center text-white shadow-glow">
-            <Sparkles size={18} />
-          </span>
-          <span className="bg-gradient-to-r from-brand-700 to-accent-600 dark:from-brand-300 dark:to-accent-400 bg-clip-text text-transparent">
-            EventSphere
+          <LogoMark size={34} />
+          <span>
+            <span className="bg-gradient-to-r from-brand-700 to-accent-600 dark:from-brand-300 dark:to-accent-400 bg-clip-text text-transparent">
+              Event
+            </span>
+            <span className="bg-gradient-to-r from-accent-600 to-brand-700 dark:from-accent-400 dark:to-brand-300 bg-clip-text text-transparent">
+              Sphere
+            </span>
           </span>
         </Link>
 
