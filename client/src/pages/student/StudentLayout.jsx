@@ -12,6 +12,7 @@ const LINKS = [
   { to: '/dashboard/attendance', label: 'Attendance', icon: QrCode },
   { to: '/dashboard/certificates', label: 'Certificates', icon: Award },
   { to: '/dashboard/saved', label: 'Saved Events', icon: Bookmark },
+  { to: '/dashboard/saved-media', label: 'Saved Media', icon: Image },
   { to: '/dashboard/feedback', label: 'Feedback', icon: MessageSquare },
   { to: '/dashboard/profile', label: 'Profile', icon: User },
 ];

@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Registration = require('../models/Registration');
 const Event = require('../models/Event');
 const Certificate = require('../models/Certificate');
+const Media = require('../models/Media');
 
 // @route GET /api/users/me/dashboard  (participant overview stats)
 const getMyDashboard = asyncHandler(async (req, res) => {
@@ -72,6 +73,35 @@ const getMyBookmarks = asyncHandler(async (req, res) => {
   success(res, 200, 'Bookmarked events fetched', { events: user.bookmarkedEvents });
 });
 
+// @route POST /api/users/me/saved-media/:mediaId  (SRS 1.6.3 - Saved Media)
+const toggleSavedMedia = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+  const mediaId = req.params.mediaId;
+
+  const idx = user.savedMedia.findIndex((id) => id.toString() === mediaId);
+  let saved;
+  if (idx >= 0) {
+    user.savedMedia.splice(idx, 1);
+    saved = false;
+  } else {
+    const media = await Media.findById(mediaId);
+    if (!media) throw new ApiError(404, 'Media item not found');
+    user.savedMedia.push(mediaId);
+    saved = true;
+  }
+  await user.save();
+  success(res, 200, saved ? 'Saved to your gallery' : 'Removed from saved media', { saved });
+});
+
+// @route GET /api/users/me/saved-media
+const getMySavedMedia = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id).populate({
+    path: 'savedMedia',
+    populate: [{ path: 'event', select: 'title' }, { path: 'department', select: 'name' }],
+  });
+  success(res, 200, 'Saved media fetched', { media: user.savedMedia });
+});
+
 // ---------- Admin: user management (SRS section 17) ----------
 
 // @route GET /api/admin/users
@@ -128,5 +158,6 @@ const deleteUser = asyncHandler(async (req, res) => {
 
 module.exports = {
   getMyDashboard, updateProfile, toggleBookmark, getMyBookmarks,
+  toggleSavedMedia, getMySavedMedia,
   listUsers, changeUserRole, changeUserStatus, deleteUser,
 };

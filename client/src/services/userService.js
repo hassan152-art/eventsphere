@@ -12,6 +12,12 @@ export const userService = {
 
   bookmarks: () =>
     api.get('/users/me/bookmarks').then((r) => r.data),
+
+  toggleSavedMedia: (mediaId) =>
+    api.post(`/users/me/saved-media/${mediaId}`).then((r) => r.data),
+
+  savedMedia: () =>
+    api.get('/users/me/saved-media').then((r) => r.data),
 };
 
 export const notificationService = {

@@ -32,6 +32,19 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await authService.login({ email, password });
+    // Admin accounts require a second verification step (email OTP) before
+    // a session token is issued - see authController.login.
+    if (data.requiresTwoFactor) {
+      return { requiresTwoFactor: true, email: data.email };
+    }
+    localStorage.setItem('es_token', data.token);
+    localStorage.setItem('es_user', JSON.stringify(data.user));
+    setUser(data.user);
+    return { user: data.user };
+  };
+
+  const verifyTwoFactor = async (email, code) => {
+    const { data } = await authService.verifyTwoFactor({ email, code });
     localStorage.setItem('es_token', data.token);
     localStorage.setItem('es_user', JSON.stringify(data.user));
     setUser(data.user);

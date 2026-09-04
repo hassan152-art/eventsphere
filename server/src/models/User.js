@@ -22,6 +22,10 @@ const userSchema = new mongoose.Schema(
     passwordResetToken: { type: String, select: false },
     passwordResetExpires: { type: Date, select: false },
 
+    // Admin two-factor authentication (SRS 1.6 - Admin login with 2FA)
+    twoFactorCode: { type: String, select: false },
+    twoFactorExpires: { type: Date, select: false },
+
     lastLoginAt: { type: Date },
   },
   { timestamps: true }

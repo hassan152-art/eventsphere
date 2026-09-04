@@ -25,6 +25,7 @@ import MyRegistrations from './pages/student/MyRegistrations';
 import Attendance from './pages/student/Attendance';
 import Certificates from './pages/student/Certificates';
 import SavedEvents from './pages/student/SavedEvents';
+import SavedMedia from './pages/student/SavedMedia';
 import StudentFeedback from './pages/student/Feedback';
 import Profile from './pages/student/Profile';
 
@@ -77,6 +78,7 @@ export default function App() {
             <Route path="attendance" element={<Attendance />} />
             <Route path="certificates" element={<Certificates />} />
             <Route path="saved" element={<SavedEvents />} />
+            <Route path="saved-media" element={<SavedMedia />} />
             <Route path="feedback" element={<StudentFeedback />} />
             <Route path="profile" element={<Profile />} />
           </Route>

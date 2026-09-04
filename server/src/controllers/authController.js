@@ -40,6 +40,53 @@ const login = asyncHandler(async (req, res) => {
   const match = await user.comparePassword(password);
   if (!match) throw new ApiError(401, 'Invalid email or password');
 
+  // Admins go through an email OTP step (SRS 1.6 - elevated credentials with 2FA)
+  // before a session token is issued.
+  if (user.role === 'admin') {
+    const code = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit OTP
+    user.twoFactorCode = crypto.createHash('sha256').update(code).digest('hex');
+    user.twoFactorExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await user.save();
+
+    await sendEmail({
+      to: user.email,
+      subject: 'Your EventSphere admin verification code',
+      html: `<p>Your verification code is <strong>${code}</strong>. It expires in 10 minutes.</p>`,
+    });
+    // Also surfaced in the server console so local/demo environments without
+    // SMTP configured can still complete the 2FA flow (see emailService.js).
+    console.log(`[2FA] Admin verification code for ${user.email}: ${code}`);
+
+    return success(res, 200, 'A verification code has been sent to your email', {
+      requiresTwoFactor: true,
+      email: user.email,
+    });
+  }
+
+  user.lastLoginAt = new Date();
+  await user.save();
+
+  const token = generateToken(user._id, user.role);
+  success(res, 200, 'Login successful', { user: user.toSafeObject(), token });
+});
+
+// @route POST /api/auth/verify-2fa  (admin OTP verification, step 2 of login)
+const verifyTwoFactor = asyncHandler(async (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) throw new ApiError(400, 'Email and verification code are required');
+
+  const hashedCode = crypto.createHash('sha256').update(String(code)).digest('hex');
+
+  const user = await User.findOne({
+    email,
+    twoFactorCode: hashedCode,
+    twoFactorExpires: { $gt: Date.now() },
+  }).select('+twoFactorCode +twoFactorExpires');
+
+  if (!user) throw new ApiError(400, 'Invalid or expired verification code');
+
+  user.twoFactorCode = undefined;
+  user.twoFactorExpires = undefined;
   user.lastLoginAt = new Date();
   await user.save();
 
@@ -94,4 +141,4 @@ const resetPassword = asyncHandler(async (req, res) => {
   success(res, 200, 'Password reset successfully. You can now log in.');
 });
 
-module.exports = { register, login, getMe, forgotPassword, resetPassword };
+module.exports = { register, login, verifyTwoFactor, getMe, forgotPassword, resetPassword };

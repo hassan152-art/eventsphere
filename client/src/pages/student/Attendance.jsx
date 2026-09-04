@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { QrCode, CheckCircle2, Loader2 } from 'lucide-react';
+import { QrCode, CheckCircle2, Loader2, Download } from 'lucide-react';
 import { registrationService, attendanceService } from '../../services/registrationService';
 import EmptyState from '../../components/ui/EmptyState';
 
@@ -42,6 +42,18 @@ export default function Attendance() {
 
   const upcomingRegs = registrations.filter((r) => r.event && !attendedEventIds.has(r.event._id));
 
+  const downloadQR = () => {
+    if (!activeQR?.qrDataUrl) return;
+    const link = document.createElement('a');
+    link.href = activeQR.qrDataUrl;
+    const safeTitle = (activeQR.event?.title || 'event-pass').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    link.download = `eventsphere-qr-pass-${safeTitle}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('QR pass downloaded');
+  };
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-extrabold">Attendance</h1>
@@ -79,6 +91,9 @@ export default function Attendance() {
           <p className="font-semibold mb-3">{activeQR.event?.title}</p>
           <img src={activeQR.qrDataUrl} alt="QR attendance pass" className="mx-auto rounded-xl w-56 h-56" />
           <p className="text-xs text-slate-400 mt-3">Show this to the organizer at the venue to check in.</p>
+          <button onClick={downloadQR} className="btn-primary mt-4 inline-flex items-center gap-2 !py-2 !px-4 text-sm">
+            <Download size={16} /> Download QR Pass
+          </button>
         </div>
       )}
 

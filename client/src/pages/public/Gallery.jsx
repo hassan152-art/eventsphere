@@ -1,17 +1,22 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, Search } from 'lucide-react';
+import { X, Search, Heart } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { userService } from '../../services/userService';
+import { useAuth } from '../../context/AuthContext';
 import EmptyState from '../../components/ui/EmptyState';
 
 const CATEGORIES = ['Cultural Events', 'Technical Fests', 'Sports Meets', 'Annual Day', 'Workshops', 'Seminars', 'Competitions'];
 
 export default function Gallery() {
+  const { isAuthenticated } = useAuth();
   const [media, setMedia] = useState([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('');
   const [search, setSearch] = useState('');
   const [lightbox, setLightbox] = useState(null);
+  const [savedIds, setSavedIds] = useState(new Set());
 
   useEffect(() => {
     setLoading(true);
@@ -20,6 +25,32 @@ export default function Gallery() {
       .catch(() => setMedia([]))
       .finally(() => setLoading(false));
   }, [category, search]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setSavedIds(new Set());
+      return;
+    }
+    userService.savedMedia()
+      .then(({ data }) => setSavedIds(new Set(data.media.map((m) => m._id))))
+      .catch(() => {});
+  }, [isAuthenticated]);
+
+  const toggleSave = async (e, mediaId) => {
+    e.stopPropagation();
+    if (!isAuthenticated) return toast('Please login to save media to your profile');
+    try {
+      const { data } = await userService.toggleSavedMedia(mediaId);
+      setSavedIds((prev) => {
+        const next = new Set(prev);
+        if (data.saved) next.add(mediaId); else next.delete(mediaId);
+        return next;
+      });
+      toast.success(data.saved ? 'Saved to your profile' : 'Removed from saved media');
+    } catch {
+      toast.error('Something went wrong');
+    }
+  };
 
   return (
     <div className="container-page py-10">
@@ -46,13 +77,24 @@ export default function Gallery() {
       ) : (
         <div className="columns-2 sm:columns-3 lg:columns-4 gap-4 mt-8 space-y-4">
           {media.map((m) => (
-            <motion.button
-              key={m._id} onClick={() => setLightbox(m)}
+            <motion.div
+              key={m._id}
               whileHover={{ scale: 1.02 }}
-              className="block w-full break-inside-avoid rounded-2xl overflow-hidden shadow-soft"
+              className="relative block w-full break-inside-avoid rounded-2xl overflow-hidden shadow-soft group"
             >
-              <img src={m.thumbnailUrl || m.url} alt={m.caption} className="w-full object-cover" />
-            </motion.button>
+              <button onClick={() => setLightbox(m)} className="block w-full">
+                <img src={m.thumbnailUrl || m.url} alt={m.caption} className="w-full object-cover" />
+              </button>
+              <button
+                onClick={(e) => toggleSave(e, m._id)}
+                title={savedIds.has(m._id) ? 'Remove from saved' : 'Save to my profile'}
+                className={`absolute top-2 right-2 h-8 w-8 rounded-full grid place-items-center backdrop-blur transition-opacity ${
+                  savedIds.has(m._id) ? 'bg-brand-600 text-white opacity-100' : 'bg-white/90 text-slate-600 opacity-0 group-hover:opacity-100'
+                }`}
+              >
+                <Heart size={14} fill={savedIds.has(m._id) ? 'currentColor' : 'none'} />
+              </button>
+            </motion.div>
           ))}
         </div>
       )}
