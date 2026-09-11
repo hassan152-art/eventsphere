@@ -42,6 +42,7 @@ import AdminLayout from './pages/admin/AdminLayout';
 import AdminOverview from './pages/admin/Overview';
 import AdminUsers from './pages/admin/Users';
 import PendingApprovals from './pages/admin/PendingApprovals';
+import RegistrationApprovals from './pages/admin/RegistrationApprovals';
 import AllEvents from './pages/admin/AllEvents';
 import GalleryModeration from './pages/admin/GalleryModeration';
 import FeedbackModeration from './pages/admin/FeedbackModeration';
@@ -99,6 +100,7 @@ export default function App() {
             <Route index element={<AdminOverview />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="pending" element={<PendingApprovals />} />
+            <Route path="registrations" element={<RegistrationApprovals />} />
             <Route path="events" element={<AllEvents />} />
             <Route path="gallery" element={<GalleryModeration />} />
             <Route path="feedback" element={<FeedbackModeration />} />

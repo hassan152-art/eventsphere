@@ -4,6 +4,12 @@ export const registrationService = {
   register: (eventId, data) => api.post(`/registrations/${eventId}`, data).then((r) => r.data),
   cancel: (id) => api.delete(`/registrations/${id}`).then((r) => r.data),
   mine: (status) => api.get('/registrations/me', { params: { status } }).then((r) => r.data),
+  getPending: () => api.get('/registrations/pending').then((r) => r.data),
+  downloadTicket: (registrationId) =>
+    api.get(`/registrations/${registrationId}/ticket`, { responseType: 'blob' }),
+  exportCSV: (eventId) =>
+    api.get(`/events/${eventId}/export-registrations`, { responseType: 'blob' }),
+  updateStatus: (id, status) => api.patch(`/registrations/${id}/status`, { status }).then((r) => r.data),
 };
 
 export const attendanceService = {
@@ -20,4 +26,6 @@ export const certificateService = {
 
 export const feedbackService = {
   submit: (eventId, payload) => api.post(`/feedback/${eventId}`, payload).then((r) => r.data),
+  getByEvent: (eventId) => api.get(`/events/${eventId}/feedback`).then((r) => r.data),
 };
+

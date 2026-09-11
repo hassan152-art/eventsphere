@@ -3,17 +3,15 @@ const { ApiError, success } = require('../utils/apiResponse');
 const Event = require('../models/Event');
 const Registration = require('../models/Registration');
 const Notification = require('../models/Notification');
-const { sendEmail } = require('../services/emailService');
+const User = require('../models/User');
+const { sendEmail, sendBookingConfirmationEmail, sendPendingRegistrationEmail, sendAdminRegistrationNotification } = require('../services/emailService');
+const { generateTicketPDF } = require('../services/ticketService');
 
 // @route POST /api/registrations/:eventId
-// Implements SRS section 10: eligibility/deadline/seat/duplicate checks,
-// waitlisting, and atomic seat decrement to prevent overbooking.
 const registerForEvent = asyncHandler(async (req, res) => {
   const { eventId } = req.params;
   const studentId = req.user._id;
 
-  // Optional extra details from a custom registration form on the frontend
-  // (roll number, phone, semester, etc.) - all optional, purely additive.
   const { fullName, email, rollNumber, phone, department, semester } = req.body || {};
   const walkInDetails = { fullName, email, rollNumber, phone, department, semester };
   const hasWalkInDetails = Object.values(walkInDetails).some((v) => v !== undefined && v !== null && v !== '');
@@ -31,45 +29,21 @@ const registerForEvent = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Registration deadline has passed');
   }
 
-  // NOTE: We intentionally avoid mongoose sessions/transactions here.
-  // Multi-document transactions require MongoDB to be running as a replica
-  // set (or mongos), which a plain local `mongod` is not by default - on a
-  // standalone instance `session.withTransaction()` throws "Transaction
-  // numbers are only allowed on a replica set member or mongos" and the
-  // whole registration silently fails, so students never get a Confirmed
-  // registration (and therefore never see an attendance QR).
-  //
-  // Overbooking is still prevented because the seat decrement below is a
-  // single atomic `findOneAndUpdate` (Mongo guarantees atomicity per
-  // document regardless of transactions). If the follow-up Registration
-  // write fails for some reason, we compensate by reverting the seat count.
   let registration;
 
-  // Atomic seat decrement - only succeeds if a seat is still available,
-  // which is what actually prevents overbooking under concurrent requests.
-  const updatedEvent = await Event.findOneAndUpdate(
-    { _id: eventId, seatsRemaining: { $gt: 0 } },
-    { $inc: { seatsRemaining: -1, registrationCount: 1 } },
-    { new: true }
-  );
-
-  if (updatedEvent) {
+  if (event.seatsRemaining > 0) {
     try {
       registration = await Registration.create({
         event: eventId,
         student: studentId,
-        status: 'Confirmed',
+        status: 'Pending', // Pending approval by Admin / Organizer
         ...(hasWalkInDetails && { walkInDetails }),
       });
     } catch (err) {
-      // Roll back the seat reservation if the registration record couldn't
-      // be created (e.g. duplicate-key race), so seats aren't lost.
-      await Event.updateOne({ _id: eventId }, { $inc: { seatsRemaining: 1, registrationCount: -1 } });
       if (err.code === 11000) throw new ApiError(409, 'You are already registered for this event');
       throw err;
     }
   } else {
-    // No seat available -> waitlist if enabled
     if (!event.waitlistEnabled) {
       throw new ApiError(400, 'Registration Full');
     }
@@ -83,7 +57,6 @@ const registerForEvent = asyncHandler(async (req, res) => {
         waitlistPosition: waitlistCount + 1,
         ...(hasWalkInDetails && { walkInDetails }),
       });
-      await Event.updateOne({ _id: eventId }, { $inc: { registrationCount: 1 } });
     } catch (err) {
       if (err.code === 11000) throw new ApiError(409, 'You are already registered for this event');
       throw err;
@@ -92,28 +65,65 @@ const registerForEvent = asyncHandler(async (req, res) => {
 
   const isWaitlisted = registration.status === 'Waitlisted';
 
+  // Notify the student
   await Notification.create({
     recipient: studentId,
-    type: isWaitlisted ? 'Registration Confirmation' : 'Registration Confirmation',
-    title: isWaitlisted ? "You're on the waitlist" : "You're registered!",
+    type: 'Registration Confirmation',
+    title: isWaitlisted ? "You're on the waitlist" : 'Registration Submitted (Pending Approval)',
     message: isWaitlisted
       ? `The event "${event.title}" is currently full. You've been added to the waitlist.`
-      : `Your spot for "${event.title}" is confirmed.`,
+      : `Your registration for "${event.title}" has been submitted and is pending Admin & Organizer approval.`,
     relatedEvent: event._id,
   });
 
-  await sendEmail({
-    to: req.user.email,
-    subject: isWaitlisted ? 'Waitlisted for ' + event.title : 'Registration confirmed: ' + event.title,
-    html: `<p>${isWaitlisted ? "You've been added to the waitlist for" : 'Your spot is confirmed for'} <strong>${event.title}</strong>.</p>`,
-  });
+  if (isWaitlisted) {
+    await sendBookingConfirmationEmail(req.user, event, registration);
+  } else {
+    await sendPendingRegistrationEmail(req.user, event);
+  }
+
+  // Notify ALL admins about the new pending registration (in-app + email)
+  if (!isWaitlisted) {
+    try {
+      const admins = await User.find({ role: 'admin', status: 'active' }).select('_id fullName email');
+      await Promise.all(
+        admins.map(async (admin) => {
+          // In-app notification
+          await Notification.create({
+            recipient: admin._id,
+            type: 'Registration Confirmation',
+            title: 'New Registration Request Pending Approval',
+            message: `${req.user.fullName} has submitted a registration request for "${event.title}".`,
+            relatedEvent: event._id,
+          });
+          // Email notification
+          await sendAdminRegistrationNotification(admin.email, admin.fullName, req.user, event);
+        })
+      );
+
+      // Also notify the event organizer
+      const organizer = await User.findById(event.organizer).select('_id fullName email');
+      if (organizer && organizer._id.toString() !== studentId.toString()) {
+        await Notification.create({
+          recipient: organizer._id,
+          type: 'Registration Confirmation',
+          title: 'New Registration Request for Your Event',
+          message: `${req.user.fullName} has submitted a registration request for "${event.title}".`,
+          relatedEvent: event._id,
+        });
+        await sendAdminRegistrationNotification(organizer.email, organizer.fullName, req.user, event);
+      }
+    } catch (notifyErr) {
+      console.error('[registrationController] Admin/organizer notification failed:', notifyErr.message);
+    }
+  }
 
   success(
     res,
     201,
     isWaitlisted
       ? "The event is currently full. You've been added to the waitlist."
-      : "You're registered! Your spot is confirmed.",
+      : "Your registration request has been submitted to Admin & Organizer for approval!",
     { registration }
   );
 });
@@ -134,7 +144,6 @@ const cancelRegistration = asyncHandler(async (req, res) => {
   await registration.save();
 
   if (wasConfirmed) {
-    // Give the seat back, then promote the earliest waitlisted registrant
     const event = await Event.findByIdAndUpdate(
       registration.event._id,
       { $inc: { seatsRemaining: 1 } },
@@ -188,4 +197,125 @@ const getEventRegistrations = asyncHandler(async (req, res) => {
   success(res, 200, 'Event registrations fetched', { registrations });
 });
 
-module.exports = { registerForEvent, cancelRegistration, getMyRegistrations, getEventRegistrations };
+// @route GET /api/registrations/:id/ticket  (PDF ticket download)
+const getRegistrationTicket = asyncHandler(async (req, res) => {
+  const registration = await Registration.findById(req.params.id)
+    .populate('event')
+    .populate('student');
+
+  if (!registration) throw new ApiError(404, 'Registration not found');
+
+  const isOwner = registration.student._id.toString() === req.user._id.toString();
+  const isOrganizerOrAdmin = req.user.role === 'admin' || req.user.role === 'organizer';
+  if (!isOwner && !isOrganizerOrAdmin) throw new ApiError(403, 'Not authorized to download this ticket');
+
+  const pdfBuffer = await generateTicketPDF({
+    registration,
+    event: registration.event,
+    user: registration.student,
+  });
+
+  const fileName = `Ticket_${registration.event.title.replace(/[^\w]/g, '_')}_${registration._id}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.send(pdfBuffer);
+});
+
+// @route GET /api/events/:eventId/export-registrations (CSV export for organizer/admin)
+const exportRegistrationsCSV = asyncHandler(async (req, res) => {
+  const { eventId } = req.params;
+  const event = await Event.findById(eventId);
+  if (!event) throw new ApiError(404, 'Event not found');
+
+  const isOwner = event.organizer.toString() === req.user._id.toString();
+  if (!isOwner && req.user.role !== 'admin') throw new ApiError(403, 'Not permitted');
+
+  const registrations = await Registration.find({ event: eventId })
+    .populate('student', 'fullName email department enrollmentNumber contactNumber')
+    .sort('-createdAt');
+
+  let csvContent = 'Registration ID,Student Name,Email,Enrollment No,Department,Status,Registered Date\n';
+  registrations.forEach((r) => {
+    const s = r.student || {};
+    const walk = r.walkInDetails || {};
+    const name = (walk.fullName || s.fullName || 'N/A').replace(/,/g, ' ');
+    const email = (walk.email || s.email || 'N/A').replace(/,/g, ' ');
+    const enroll = (walk.rollNumber || s.enrollmentNumber || 'N/A').replace(/,/g, ' ');
+    const dept = (walk.department || s.department || 'N/A').replace(/,/g, ' ');
+    const date = new Date(r.registeredAt).toISOString().split('T')[0];
+
+    csvContent += `"${r._id}","${name}","${email}","${enroll}","${dept}","${r.status}","${date}"\n`;
+  });
+
+  const filename = `Participants_${event.title.replace(/[^\w]/g, '_')}.csv`;
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(csvContent);
+});
+
+// @route GET /api/registrations/pending (admin/organizer pending approvals queue)
+const getPendingRegistrations = asyncHandler(async (req, res) => {
+  const filter = { status: 'Pending' };
+
+  // Organizers only see pending registrations for their own events
+  if (req.user.role === 'organizer') {
+    const myEvents = await Event.find({ organizer: req.user._id }).select('_id');
+    filter.event = { $in: myEvents.map((e) => e._id) };
+  }
+
+  const registrations = await Registration.find(filter)
+    .populate('student', 'fullName email department enrollmentNumber contactNumber')
+    .populate('event', 'title date venue department startTime endTime')
+    .sort('-createdAt');
+
+  success(res, 200, 'Pending registrations fetched', { registrations });
+});
+
+// @route PATCH /api/registrations/:id/status (organizer/admin update status)
+const updateRegistrationStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  if (!['Confirmed', 'Waitlisted', 'Cancelled'].includes(status)) {
+    throw new ApiError(400, 'Invalid status');
+  }
+
+  const registration = await Registration.findById(req.params.id)
+    .populate('event')
+    .populate('student');
+
+  if (!registration) throw new ApiError(404, 'Registration not found');
+
+  const isOwner = registration.event.organizer.toString() === req.user._id.toString();
+  if (!isOwner && req.user.role !== 'admin') throw new ApiError(403, 'Not permitted');
+
+  const prevStatus = registration.status;
+  registration.status = status;
+  await registration.save();
+
+  // If status is approved to Confirmed from Pending, reserve seat count
+  if (status === 'Confirmed' && prevStatus === 'Pending') {
+    await Event.updateOne(
+      { _id: registration.event._id },
+      { $inc: { seatsRemaining: -1, registrationCount: 1 } }
+    );
+    // Send email confirmation with PDF ticket pass details
+    await sendBookingConfirmationEmail(registration.student, registration.event, registration);
+  }
+
+  await Notification.create({
+    recipient: registration.student._id,
+    type: 'Registration Confirmation',
+    title: `Registration ${status === 'Confirmed' ? 'Approved!' : status}`,
+    message: status === 'Confirmed'
+      ? `Your registration for "${registration.event.title}" has been APPROVED by Admin! You can now download your PDF ticket.`
+      : `Your registration for "${registration.event.title}" status is now ${status}.`,
+    relatedEvent: registration.event._id,
+  });
+
+  success(res, 200, `Registration updated to ${status}`, { registration });
+});
+
+module.exports = {
+  registerForEvent, cancelRegistration, getMyRegistrations,
+  getEventRegistrations, getRegistrationTicket, exportRegistrationsCSV,
+  updateRegistrationStatus, getPendingRegistrations,
+};

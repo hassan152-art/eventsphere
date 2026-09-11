@@ -6,6 +6,7 @@ import {
   Facebook, Linkedin, Mail, MessageCircle, Twitter, Star,
 } from 'lucide-react';
 import { eventService } from '../../services/eventService';
+import { feedbackService } from '../../services/registrationService';
 import StatusBadge from '../../components/events/StatusBadge';
 import SeatAvailability from '../../components/events/SeatAvailability';
 import { useAuth } from '../../context/AuthContext';
@@ -22,6 +23,12 @@ export default function EventDetails() {
   const [feedback, setFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showRegistrationForm, setShowRegistrationForm] = useState(false);
+
+  // Rating modal state
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [submittingRating, setSubmittingRating] = useState(false);
 
   const load = () => {
     eventService.getBySlug(slug).then(({ data }) => {
@@ -48,6 +55,24 @@ export default function EventDetails() {
 
   if (loading) return <div className="min-h-[60vh] grid place-items-center"><div className="h-10 w-10 rounded-full border-4 border-brand-200 border-t-brand-600 animate-spin" /></div>;
   if (!event) return <div className="container-page py-24 text-center">Event not found.</div>;
+
+  const handleRatingSubmit = async (e) => {
+    e.preventDefault();
+    if (!event) return;
+    setSubmittingRating(true);
+    try {
+      await feedbackService.submit(event._id, { overallRating: rating, comment });
+      toast.success('Thank you for rating this event!');
+      setShowRatingModal(false);
+      setComment('');
+      setRating(5);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to submit rating');
+    } finally {
+      setSubmittingRating(false);
+    }
+  };
 
   return (
     <div>
@@ -104,20 +129,33 @@ export default function EventDetails() {
           </section>
 
           <section>
-            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
-              Reviews {event.ratingCount > 0 && <span className="text-sm text-slate-400 font-normal">({event.averageRating.toFixed(1)} · {event.ratingCount} reviews)</span>}
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                Reviews {event.ratingCount > 0 && <span className="text-sm text-slate-400 font-normal">({event.averageRating.toFixed(1)} ⭐ · {event.ratingCount} reviews)</span>}
+              </h2>
+              {isAuthenticated && (
+                <button
+                  onClick={() => setShowRatingModal(true)}
+                  className="btn-secondary !py-1.5 !px-3 text-xs flex items-center gap-1 text-amber-500 border-amber-300 dark:border-amber-700"
+                >
+                  <Star size={14} className="fill-amber-400 text-amber-400" /> Write a Review
+                </button>
+              )}
+            </div>
+
             {feedback.length === 0 ? (
-              <p className="text-sm text-slate-400">No reviews yet.</p>
+              <p className="text-sm text-slate-400">No reviews yet. Be the first to rate this event!</p>
             ) : (
               <div className="space-y-3">
                 {feedback.map((f) => (
                   <div key={f._id} className="card p-4">
                     <div className="flex items-center justify-between">
-                      <p className="font-semibold text-sm">{f.student?.fullName}</p>
-                      <span className="flex items-center gap-1 text-amber-500 text-xs"><Star size={13} fill="currentColor" /> {f.overallRating}</span>
+                      <p className="font-semibold text-sm">{f.student?.fullName || 'Student'}</p>
+                      <span className="flex items-center gap-1 text-amber-500 text-xs font-bold">
+                        <Star size={13} className="fill-amber-400 text-amber-400" /> {f.overallRating}/5
+                      </span>
                     </div>
-                    {f.comment && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5">{f.comment}</p>}
+                    {f.comment && <p className="text-sm text-slate-600 dark:text-slate-300 mt-1.5">{f.comment}</p>}
                   </div>
                 ))}
               </div>
@@ -168,6 +206,65 @@ export default function EventDetails() {
           onClose={() => setShowRegistrationForm(false)}
           onSuccess={load}
         />
+      )}
+
+      {/* Rating Modal */}
+      {showRatingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <h2 className="text-xl font-bold mb-1">Rate "{event.title}"</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Leave your rating and review for this event.</p>
+
+            <form onSubmit={handleRatingSubmit} className="space-y-4">
+              <div>
+                <label className="label mb-2">Rating</label>
+                <div className="flex gap-2 justify-center py-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      type="button"
+                      key={star}
+                      onClick={() => setRating(star)}
+                      className="p-1 transition-transform hover:scale-125 focus:outline-none"
+                    >
+                      <Star
+                        size={32}
+                        className={star <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-700'}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Your Review (Optional)</label>
+                <textarea
+                  rows={3}
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Share your experience..."
+                  className="input text-sm"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRatingModal(false)}
+                  className="btn-secondary !py-2 !px-4 text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingRating}
+                  className="btn-primary !py-2 !px-4 text-xs"
+                >
+                  {submittingRating ? 'Submitting...' : 'Submit Review'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

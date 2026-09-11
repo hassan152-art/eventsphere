@@ -3,7 +3,7 @@ const { ApiError, success } = require('../utils/apiResponse');
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
 const crypto = require('crypto');
-const { sendEmail } = require('../services/emailService');
+const { sendEmail, sendWelcomeEmail } = require('../services/emailService');
 
 // @route POST /api/auth/register
 const register = asyncHandler(async (req, res) => {
@@ -19,11 +19,8 @@ const register = asyncHandler(async (req, res) => {
 
   const token = generateToken(user._id, user.role);
 
-  await sendEmail({
-    to: user.email,
-    subject: 'Welcome to EventSphere',
-    html: `<p>Hi ${user.fullName}, your EventSphere account has been created.</p>`,
-  });
+  // Send rich HTML Welcome email
+  await sendWelcomeEmail(user);
 
   success(res, 201, 'Account created successfully', { user: user.toSafeObject(), token });
 });
@@ -39,29 +36,6 @@ const login = asyncHandler(async (req, res) => {
 
   const match = await user.comparePassword(password);
   if (!match) throw new ApiError(401, 'Invalid email or password');
-
-  // Admins go through an email OTP step (SRS 1.6 - elevated credentials with 2FA)
-  // before a session token is issued.
-  if (user.role === 'admin') {
-    const code = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit OTP
-    user.twoFactorCode = crypto.createHash('sha256').update(code).digest('hex');
-    user.twoFactorExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-    await user.save();
-
-    await sendEmail({
-      to: user.email,
-      subject: 'Your EventSphere admin verification code',
-      html: `<p>Your verification code is <strong>${code}</strong>. It expires in 10 minutes.</p>`,
-    });
-    // Also surfaced in the server console so local/demo environments without
-    // SMTP configured can still complete the 2FA flow (see emailService.js).
-    console.log(`[2FA] Admin verification code for ${user.email}: ${code}`);
-
-    return success(res, 200, 'A verification code has been sent to your email', {
-      requiresTwoFactor: true,
-      email: user.email,
-    });
-  }
 
   user.lastLoginAt = new Date();
   await user.save();

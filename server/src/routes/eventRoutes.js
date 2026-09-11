@@ -7,7 +7,7 @@ const validate = require('../validators/validate');
 const {
   listEvents, getEventBySlug, createEvent, updateEvent, uploadEventMedia, deleteEvent, cancelEvent,
 } = require('../controllers/eventController');
-const { getEventRegistrations } = require('../controllers/registrationController');
+const { getEventRegistrations, exportRegistrationsCSV } = require('../controllers/registrationController');
 const { getEventAttendance } = require('../controllers/attendanceController');
 const { getEventFeedback } = require('../controllers/feedbackController');
 
@@ -22,6 +22,7 @@ router.delete('/:id', protect, authorize('organizer', 'admin'), deleteEvent);
 router.patch('/:id/cancel', protect, authorize('organizer', 'admin'), cancelEvent);
 
 router.get('/:eventId/registrations', protect, authorize('organizer', 'admin'), getEventRegistrations);
+router.get('/:eventId/export-registrations', protect, authorize('organizer', 'admin'), exportRegistrationsCSV);
 router.get('/:eventId/attendance', protect, authorize('organizer', 'admin'), getEventAttendance);
 
 module.exports = router;

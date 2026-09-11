@@ -2,6 +2,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const { ApiError, success } = require('../utils/apiResponse');
 const Feedback = require('../models/Feedback');
 const Attendance = require('../models/Attendance');
+const Registration = require('../models/Registration');
 const Event = require('../models/Event');
 
 // @route POST /api/feedback/:eventId
@@ -9,13 +10,29 @@ const submitFeedback = asyncHandler(async (req, res) => {
   const { eventId } = req.params;
   const studentId = req.user._id;
 
-  const attended = await Attendance.findOne({ event: eventId, student: studentId });
-  if (!attended) throw new ApiError(400, 'Feedback can only be submitted after attending the event');
+  const isRegistered = await Registration.findOne({ event: eventId, student: studentId, status: { $ne: 'Cancelled' } });
+  const hasAttended = await Attendance.findOne({ event: eventId, student: studentId });
+
+  if (!isRegistered && !hasAttended) {
+    throw new ApiError(400, 'Rating and feedback can only be submitted by registered participants');
+  }
 
   const existing = await Feedback.findOne({ event: eventId, student: studentId });
-  if (existing) throw new ApiError(409, 'You have already submitted feedback for this event');
+  if (existing) throw new ApiError(409, 'You have already submitted a rating for this event');
 
-  const feedback = await Feedback.create({ event: eventId, student: studentId, ...req.body });
+  const { overallRating, venueRating, coordinationRating, comment } = req.body;
+  if (!overallRating || overallRating < 1 || overallRating > 5) {
+    throw new ApiError(400, 'Please provide a valid rating between 1 and 5 stars');
+  }
+
+  const feedback = await Feedback.create({
+    event: eventId,
+    student: studentId,
+    overallRating,
+    venueRating: venueRating || overallRating,
+    coordinationRating: coordinationRating || overallRating,
+    comment: comment || '',
+  });
 
   const stats = await Feedback.aggregate([
     { $match: { event: feedback.event } },
@@ -28,7 +45,7 @@ const submitFeedback = asyncHandler(async (req, res) => {
     });
   }
 
-  success(res, 201, 'Thank you! Your feedback has been submitted', { feedback });
+  success(res, 201, 'Thank you! Your rating and review have been submitted', { feedback });
 });
 
 // @route GET /api/feedback/event/:eventId  (approved feedback, public)

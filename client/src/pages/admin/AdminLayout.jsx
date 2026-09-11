@@ -1,11 +1,12 @@
 import { Outlet } from 'react-router-dom';
-import { LayoutDashboard, Users, ListChecks, ClipboardCheck, Image, MessageSquare, Megaphone, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Users, ListChecks, ClipboardCheck, Image, MessageSquare, Megaphone, BarChart3, UserCheck } from 'lucide-react';
 import DashboardLayout from '../../components/dashboard/DashboardLayout';
 
 const LINKS = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/users', label: 'Users', icon: Users },
-  { to: '/admin/pending', label: 'Pending Approvals', icon: ClipboardCheck },
+  { to: '/admin/pending', label: 'Event Approvals', icon: ClipboardCheck },
+  { to: '/admin/registrations', label: 'Registration Requests', icon: UserCheck },
   { to: '/admin/events', label: 'Events', icon: ListChecks },
   { to: '/admin/gallery', label: 'Gallery Moderation', icon: Image },
   { to: '/admin/feedback', label: 'Feedback Moderation', icon: MessageSquare },

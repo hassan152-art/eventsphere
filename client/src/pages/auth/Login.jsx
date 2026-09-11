@@ -6,18 +6,12 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 
 export default function Login() {
-  const { login, verifyTwoFactor, isAuthenticated } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // Admin two-factor step: once credentials are verified, an OTP is emailed
-  // and the user must enter it here before a session is created.
-  const [twoFactorEmail, setTwoFactorEmail] = useState(null);
-  const [code, setCode] = useState('');
-  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) navigate('/', { replace: true });
@@ -27,72 +21,15 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      const result = await login(form.email, form.password);
-      if (result.requiresTwoFactor) {
-        setTwoFactorEmail(result.email);
-        toast.success('Verification code sent to your email');
-      } else {
-        toast.success('Welcome back!');
-        navigate(location.state?.from?.pathname || '/', { replace: true });
-      }
+      await login(form.email, form.password);
+      toast.success('Welcome back!');
+      navigate(location.state?.from?.pathname || '/', { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.message || 'Login failed');
     } finally {
       setLoading(false);
     }
   };
-
-  const submitTwoFactor = async (e) => {
-    e.preventDefault();
-    setVerifying(true);
-    try {
-      await verifyTwoFactor(twoFactorEmail, code);
-      toast.success('Welcome back!');
-      navigate(location.state?.from?.pathname || '/', { replace: true });
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Verification failed');
-    } finally {
-      setVerifying(false);
-    }
-  };
-
-  if (twoFactorEmail) {
-    return (
-      <div className="min-h-[80vh] grid lg:grid-cols-2">
-        <div className="hidden lg:flex flex-col justify-center bg-hero-gradient text-white p-16">
-          <span className="h-12 w-12 rounded-2xl bg-white/20 grid place-items-center mb-6"><ShieldCheck size={22} /></span>
-          <h2 className="text-3xl font-extrabold leading-tight">Two-factor verification</h2>
-          <p className="text-white/80 mt-3 max-w-sm">Admin accounts are protected with an extra verification step to keep the platform secure.</p>
-        </div>
-        <div className="flex items-center justify-center p-6 sm:p-12">
-          <motion.form initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} onSubmit={submitTwoFactor} className="w-full max-w-sm space-y-5">
-            <div>
-              <h1 className="text-2xl font-extrabold">Enter verification code</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">We sent a 6-digit code to <span className="font-medium">{twoFactorEmail}</span>. It expires in 10 minutes.</p>
-            </div>
-            <div>
-              <label className="label">Verification code</label>
-              <input
-                required inputMode="numeric" maxLength={6} autoFocus
-                value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                className="input text-center tracking-[0.5em] text-lg" placeholder="000000"
-              />
-            </div>
-            <button disabled={verifying || code.length !== 6} className="btn-primary w-full">
-              {verifying ? 'Verifying...' : 'Verify & Log in'}
-            </button>
-            <button type="button" onClick={() => { setTwoFactorEmail(null); setCode(''); }} className="text-sm text-slate-500 hover:underline w-full text-center">
-              Back to login
-            </button>
-            <div className="card p-3 text-xs text-slate-500 dark:text-slate-400">
-              <p className="font-semibold mb-1">Dev tip</p>
-              <p>If email (SMTP) isn't configured, the code is also printed in the server console/terminal logs.</p>
-            </div>
-          </motion.form>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-[80vh] grid lg:grid-cols-2">

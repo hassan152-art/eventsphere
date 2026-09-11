@@ -8,8 +8,8 @@ const registrationSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ['Confirmed', 'Waitlisted', 'Cancelled'],
-      default: 'Confirmed',
+      enum: ['Pending', 'Confirmed', 'Waitlisted', 'Cancelled'],
+      default: 'Pending',
       index: true,
     },
     waitlistPosition: { type: Number, default: null },
